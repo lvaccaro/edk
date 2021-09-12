@@ -8,7 +8,7 @@ pub extern crate bip39;
 pub extern crate elements_miniscript as miniscript;
 pub extern crate serde;
 
-use bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
+use miniscript::bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
 use miniscript::elements::confidential::{
     self, Asset, AssetBlindingFactor, Nonce, Value, ValueBlindingFactor,
 };
