@@ -1,5 +1,6 @@
 [package]
-name = "edk-lite"
+name = "edk"
+description = "Elements Dev Kit"
 version = "0.1.0"
 authors = ["Luca Vaccaro <me@lvaccaro.com>"]
 

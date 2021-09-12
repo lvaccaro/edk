@@ -1,7 +1,8 @@
 <div align="center">
-  <h1>EDK lite</h1>
+  <h1>EDK</h1>
 
   <p>
+    <span>Elements Dev Kit</span>
     <strong>A modern, lightweight, descriptor-based wallet library for Elements / Liquid written in Rust!</strong>
   </p>
 
@@ -12,8 +13,6 @@
 </div>
 
 ## About
-
-A lightweight library for elements / liquid wallets.
 
 It uses Elements Miniscript to support descriptors with generalized conditions.
 

@@ -218,7 +218,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "edk-lite"
+name = "edk"
 version = "0.1.0"
 dependencies = [
  "bdk",
