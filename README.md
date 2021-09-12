@@ -3,7 +3,12 @@
 
   <p>
     <span>Elements Dev Kit</span>
+  </p>
+
+  <p>
     <strong>A modern, lightweight, descriptor-based wallet library for Elements / Liquid written in Rust!</strong>
+    <br>
+    <span>Inspired by BDK for Elements & Liquid</span>
   </p>
 
   <p>
@@ -19,6 +24,7 @@ It uses Elements Miniscript to support descriptors with generalized conditions.
 Based on:
 - [rust-elements](https://github.com/ElementsProject/rust-elements/): Library with support for de/serialization, parsing and executing on data structures and network messages related to Elements
 - [rust-miniscript-elements](https://github.com/sanket1729/rust-miniscript-elements): Library for handling Miniscript, which is a subset of Elements Script designed to support simple and general tooling.
+- [bdk](https://github.com/bitcoindevkit/bdk): A modern, lightweight, descriptor-based wallet library written in Rust.
 
 
 ## Examples
