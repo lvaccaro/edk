@@ -1,27 +1,31 @@
-
+use std::collections::{HashMap, HashSet};
 use std::error;
 use std::fmt;
 use std::str::FromStr;
-use std::collections::{HashMap, HashSet};
 
 pub extern crate bdk;
-pub extern crate elements_miniscript as miniscript;
 pub extern crate bip39;
+pub extern crate elements_miniscript as miniscript;
 pub extern crate serde;
 
-use serde::{Serialize, Deserialize};
-use miniscript::elements::slip77::MasterBlindingKey;
-use miniscript::elements::{Address, AddressParams};
-use miniscript::elements::secp256k1_zkp::{All, PublicKey, Secp256k1};
-use miniscript::{Descriptor, DescriptorPublicKey, DescriptorTrait, TranslatePk2};
-use miniscript::elements::confidential::{self, Asset, AssetBlindingFactor, Nonce, Value, ValueBlindingFactor};
-use miniscript::elements::TxOutSecrets;
+use bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
+use miniscript::elements::confidential::{
+    self, Asset, AssetBlindingFactor, Nonce, Value, ValueBlindingFactor,
+};
 use miniscript::elements::encode::deserialize as elm_des;
 use miniscript::elements::encode::serialize as elm_ser;
+use miniscript::elements::secp256k1_zkp::{All, PublicKey, Secp256k1};
+use miniscript::elements::slip77::MasterBlindingKey;
+use miniscript::elements::TxOutSecrets;
+use miniscript::elements::{Address, AddressParams};
+use miniscript::{Descriptor, DescriptorPublicKey, DescriptorTrait, TranslatePk2};
 
 use bdk::database::memory::MemoryDatabase;
 use bdk::database::Database;
-use bdk::electrum_client::{Client, ConfigBuilder, ElectrumApi, Socks5Config, ListUnspentRes, GetHistoryRes};
+use bdk::electrum_client::{
+    Client, ConfigBuilder, ElectrumApi, GetHistoryRes, ListUnspentRes, Socks5Config,
+};
+use serde::{Deserialize, Serialize};
 
 pub enum ScriptType {
     P2shP2wpkh = 0,
@@ -36,17 +40,16 @@ struct DownloadTxResult {
 }
 
 pub struct Wallet {
-    descriptor: Descriptor::<DescriptorPublicKey>,
+    descriptor: Descriptor<DescriptorPublicKey>,
     master_blinding_key: MasterBlindingKey,
     secp: Secp256k1<All>,
     database: MemoryDatabase,
-    client: Client
+    client: Client,
 }
 
 impl Wallet {
-
     pub fn new(
-        descriptor: Descriptor::<DescriptorPublicKey>,
+        descriptor: Descriptor<DescriptorPublicKey>,
         master_blinding_key: MasterBlindingKey,
         database: MemoryDatabase,
         client: Client,
@@ -56,12 +59,13 @@ impl Wallet {
             master_blinding_key,
             secp: Secp256k1::new(),
             database,
-            client
+            client,
         })
     }
 
     fn get_address(&self, index: u32) -> Result<Address, bdk::Error> {
-        let xpk = self.descriptor
+        let xpk = self
+            .descriptor
             .derive(index)
             .translate_pk2(|xpk| xpk.derive_public_key(&self.secp))
             .unwrap();
@@ -77,7 +81,9 @@ impl Wallet {
     fn get_new_address(&mut self) -> Result<Address, bdk::Error> {
         let index = match self.descriptor.is_deriveable() {
             false => 0,
-            true => self.database.increment_last_index(bdk::KeychainKind::External)?,
+            true => self
+                .database
+                .increment_last_index(bdk::KeychainKind::External)?,
         };
         let addr = self.get_address(index)?;
         Ok(addr)
@@ -85,9 +91,14 @@ impl Wallet {
 
     fn get_previous_addresses(&mut self) -> Result<Vec<Address>, bdk::Error> {
         let mut addresses = vec![];
-        for i in 0..self.database.get_last_index(bdk::KeychainKind::External)?.unwrap_or(0)+1 {
+        for i in 0..self
+            .database
+            .get_last_index(bdk::KeychainKind::External)?
+            .unwrap_or(0)
+            + 1
+        {
             addresses.push(self.get_address(i)?);
-            println!("{} {} {}",i, self.get_address(i)?, self.database.get_last_index(bdk::KeychainKind::External)?.unwrap_or(0));
+            //println!("{} {} {}",i, self.get_address(i)?, self.database.get_last_index(bdk::KeychainKind::External)?.unwrap_or(0));
         }
         Ok(addresses)
     }
@@ -96,23 +107,18 @@ impl Wallet {
         Ok(self.get_previous_addresses()?.contains(addr))
     }
 
-    fn balance(&mut self) -> Result<HashMap::<String, u64>, bdk::Error> {
+    fn balance(&mut self) -> Result<HashMap<String, u64>, bdk::Error> {
         let addrs: Vec<Address> = self.get_previous_addresses()?;
         let mut balances = HashMap::new();
 
         for unblind in self.balance_addresses(addrs)?.unblinds {
             let tx_out = unblind.1;
-            *balances
-                .entry(tx_out.asset.to_string())
-                .or_insert(0) += tx_out.value;
+            *balances.entry(tx_out.asset.to_string()).or_insert(0) += tx_out.value;
         }
         Ok(balances)
     }
 
-    fn balance_addresses(
-        &mut self,
-        addrs: Vec<Address>
-    )-> Result<DownloadTxResult, bdk::Error> {
+    fn balance_addresses(&mut self, addrs: Vec<Address>) -> Result<DownloadTxResult, bdk::Error> {
         //let client = Client::new("ssl://blockstream.info:995").unwrap();
 
         let mut history_txs_id = HashSet::<elements::Txid>::new();
@@ -129,8 +135,10 @@ impl Wallet {
             .map(|x| x.script_pubkey().into_bytes())
             .map(|x| bitcoin::Script::from(x))
             .collect();
-        let result: Vec<Vec<GetHistoryRes>> =
-                    self.client.batch_script_get_history(b_scripts.iter()).unwrap();
+        let result: Vec<Vec<GetHistoryRes>> = self
+            .client
+            .batch_script_get_history(b_scripts.iter())
+            .unwrap();
         let flattened: Vec<GetHistoryRes> = result.into_iter().flatten().collect();
         for el in flattened {
             // el.height = -1 means unconfirmed with unconfirmed parents
@@ -149,59 +157,55 @@ impl Wallet {
         Ok(self.download_txs(&history_txs_id, &scripts)?)
     }
 
-
-        fn download_txs(
-            &mut self,
-            history_txs_id: &HashSet<elements::Txid>,
-            scripts: &Vec<elements::Script>
-        ) -> Result<DownloadTxResult, bdk::Error> {
-            let mut txs = vec![];
-            let mut unblinds = vec![];
-
-            // BETxid has to be converted into bitcoin::Txid for rust-electrum-client
-            let txs_to_download: Vec<bitcoin::Txid> = history_txs_id
-                .iter()
-                .map(|x| bitcoin::Txid::from_hash(x.as_hash()))
-                .collect();
-            if txs_to_download.is_empty() {
-                Ok(DownloadTxResult::default())
-            } else {
-                let txs_bytes_downloaded = self.client.batch_transaction_get_raw(txs_to_download.iter()).unwrap();
-                let mut txs_downloaded: Vec<elements::Transaction> = vec![];
-                for vec in txs_bytes_downloaded {
-                    let tx: elements::Transaction = elm_des(&vec).unwrap();
-                    txs_downloaded.push(tx);
-                }
-                println!("txs_downloaded {}", txs_downloaded.len());
-
-                //let mut previous_txs_to_download = HashSet::new();
-                for tx in txs_downloaded.into_iter() {
-                    let txid = tx.txid();
-                    println!("compute OutPoint Unblinded");
-
-                    for (i, output) in tx.output.iter().enumerate() {
-                            let script = output.script_pubkey.clone();
-                            if scripts.contains(&script) {
-                                let vout = i as u32;
-                                let outpoint = elements::OutPoint {
-                                    txid: tx.txid(),
-                                    vout,
-                                };
-                                match self.try_unblind(outpoint, output.clone()) {
-                                    Ok(unblinded) => unblinds.push((outpoint, unblinded)),
-                                    Err(_) => println!("{} cannot unblind, ignoring (could be sender messed up with the blinding process)", outpoint),
-                                }
-                            }
-                    }
-                    txs.push((txid, tx));
-                }
-
-                Ok(DownloadTxResult {
-                    txs,
-                    unblinds,
-                })
+    fn download_txs(
+        &mut self,
+        history_txs_id: &HashSet<elements::Txid>,
+        scripts: &Vec<elements::Script>,
+    ) -> Result<DownloadTxResult, bdk::Error> {
+        let mut txs = vec![];
+        let mut unblinds = vec![];
+        // BETxid has to be converted into bitcoin::Txid for rust-electrum-client
+        let txs_to_download: Vec<bitcoin::Txid> = history_txs_id
+            .iter()
+            .map(|x| bitcoin::Txid::from_hash(x.as_hash()))
+            .collect();
+        if txs_to_download.is_empty() {
+            Ok(DownloadTxResult::default())
+        } else {
+            let txs_bytes_downloaded = self
+                .client
+                .batch_transaction_get_raw(txs_to_download.iter())
+                .unwrap();
+            let mut txs_downloaded: Vec<elements::Transaction> = vec![];
+            for vec in txs_bytes_downloaded {
+                let tx: elements::Transaction = elm_des(&vec).unwrap();
+                txs_downloaded.push(tx);
             }
+            println!("txs_downloaded {}", txs_downloaded.len());
+            //let mut previous_txs_to_download = HashSet::new();
+            for tx in txs_downloaded.into_iter() {
+                let txid = tx.txid();
+                println!("compute OutPoint Unblinded");
+                for (i, output) in tx.output.iter().enumerate() {
+                    let script = output.script_pubkey.clone();
+                    if scripts.contains(&script) {
+                        let vout = i as u32;
+                        let outpoint = elements::OutPoint {
+                            txid: tx.txid(),
+                            vout,
+                        };
+                        match self.try_unblind(outpoint, output.clone()) {
+                            Ok(unblinded) => unblinds.push((outpoint, unblinded)),
+                            Err(_) => println!("{} cannot unblind, ignoring (could be sender messed up with the blinding process)", outpoint),
+                        }
+                    }
+                }
+                txs.push((txid, tx));
+            }
+
+            Ok(DownloadTxResult { txs, unblinds })
         }
+    }
 
     pub fn try_unblind(
         &self,
@@ -218,7 +222,7 @@ impl Wallet {
                 let blinding_sk = self.master_blinding_key.derive_blinding_key(&script);
                 //let blinding_pk = PublicKey::from_secret_key(&self.secp, &blinding_sk);
                 let tx_out_secrets = output.unblind(&self.secp, blinding_sk).unwrap();
-                println!("Unblinded outpoint:{} asset:{} value:{}", outpoint, tx_out_secrets.asset.to_string(), tx_out_secrets.value);
+                //println!("Unblinded outpoint:{} asset:{} value:{}", outpoint, tx_out_secrets.asset.to_string(), tx_out_secrets.value);
                 Ok(tx_out_secrets)
             }
             (Asset::Explicit(asset_id), confidential::Value::Explicit(satoshi), _) => {
@@ -237,10 +241,7 @@ impl Wallet {
     }
 }
 
-
-fn main() {
-}
-
+fn main() {}
 
 #[cfg(test)]
 pub mod test {
@@ -251,19 +252,22 @@ pub mod test {
         seed: &[u8],
         bip32_account_num: u32,
         script_type: &ScriptType,
-        purpose: u32
-    ) -> Result<bitcoin::util::bip32::ExtendedPubKey, bdk::Error> {
+        purpose: u32,
+    ) -> Result<ExtendedPubKey, bdk::Error> {
         let secp = Secp256k1::new();
         let network = bitcoin::network::constants::Network::Bitcoin;
-        let master_xprv = bitcoin::util::bip32::ExtendedPrivKey::new_master(network, &seed).unwrap();
-        let master_xpub = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp, &master_xprv);
+        let master_xprv = ExtendedPrivKey::new_master(network, &seed).unwrap();
+        let master_xpub = ExtendedPubKey::from_private(&secp, &master_xprv);
         let master_blinding_key = MasterBlindingKey::new(&seed);
 
         // derive subaccount xprv & xpub
         let coin_type = 1776; // for liquid
-        let path: bitcoin::util::bip32::DerivationPath = format!("m/{}'/{}'/{}'", purpose, coin_type, bip32_account_num).parse().unwrap();
+        let path: bitcoin::util::bip32::DerivationPath =
+            format!("m/{}'/{}'/{}'", purpose, coin_type, bip32_account_num)
+                .parse()
+                .unwrap();
         let xprv = master_xprv.derive_priv(&secp, &path).unwrap();
-        let xpub = bitcoin::util::bip32::ExtendedPubKey::from_private(&secp, &xprv);
+        let xpub = ExtendedPubKey::from_private(&secp, &xprv);
 
         // get internal chain for not change address
         let chain = xpub.ckd_pub(&secp, 0.into()).unwrap();
@@ -274,7 +278,7 @@ pub mod test {
         chain: bitcoin::util::bip32::ExtendedPubKey,
         index: u32,
         script_type: &ScriptType,
-        master_blinding_key: &MasterBlindingKey
+        master_blinding_key: &MasterBlindingKey,
     ) -> Result<Address, bdk::Error> {
         let secp = Secp256k1::new();
         let child_key = chain.ckd_pub(&secp, index.into()).unwrap().public_key;
@@ -296,17 +300,16 @@ pub mod test {
         chain: bitcoin::util::bip32::ExtendedPubKey,
         index: u32,
         script_type: &ScriptType,
-        master_blinding_key: &MasterBlindingKey
+        master_blinding_key: &MasterBlindingKey,
     ) -> Result<Address, bdk::Error> {
         let secp = Secp256k1::new();
-        let desc = format!("{}({}/*)","elwpkh", &chain.to_string());
-        //println!("desc {}", &desc);
+        let desc = format!("{}({}/*)", "elwpkh", &chain.to_string());
 
         let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&desc).unwrap();
         let xpk = descriptor
-                .derive(1)
-                .translate_pk2(|xpk| xpk.derive_public_key(&secp))
-                .unwrap();
+            .derive(1)
+            .translate_pk2(|xpk| xpk.derive_public_key(&secp))
+            .unwrap();
         //println!("xpk {}", &xpk.script_pubkey().to_string());
         let unconfidential_address = xpk.address(&AddressParams::LIQUID).unwrap();
         let script_pubkey = xpk.script_pubkey();
@@ -319,14 +322,17 @@ pub mod test {
     #[test]
     fn test_aqua_derivation() {
         let mnemonic = "all all all all all all all all all all all all";
-        let seed = bip39::Mnemonic::from_str(mnemonic).unwrap().to_seed_normalized("");
+        let seed = bip39::Mnemonic::from_str(mnemonic)
+            .unwrap()
+            .to_seed_normalized("");
         let master_blinding_key = MasterBlindingKey::new(&seed);
 
         // 0="p2sh-p2wpkh" 1="p2wpkh" 2="p2pkh" , 49="p2sh-p2wpkh" 84="p2wpkh" 44="p2pkh"
         // let (bip32_account_num, script_type, purpose) = (0, ScriptType::P2shP2wpkh, 49);let chain = aqua_subaccount_derivation(&seed, bip32_account_num, &script_type, purpose).unwrap();
 
-        let (bip32_account_num, script_type, purpose) = (1, ScriptType::P2wpkh, 84);
-        let chain = aqua_subaccount_derivation(&seed, bip32_account_num, &script_type, purpose).unwrap();
+        let (bip32_account, script_type, purpose) = (1, ScriptType::P2wpkh, 84);
+        let chain =
+            aqua_subaccount_derivation(&seed, bip32_account, &script_type, purpose).unwrap();
         assert_eq!(
             "xpub6F33eZ1QWddkNKw27gdgACBGorYVU4iqJQwMDL85jVeiZKSjFbnKhJr15DtzBuiDLHAEr2aXk2aXahLq8Jpt9KZh1ubHuCc9Nbf65d65kPH",
             &chain.to_string()
@@ -338,13 +344,14 @@ pub mod test {
             &addr.to_string()
         );
 
-        let addr = aqua_address_derivation_descriptor(chain, 1, &script_type, &master_blinding_key).unwrap();
+        let addr = aqua_address_derivation_descriptor(chain, 1, &script_type, &master_blinding_key)
+            .unwrap();
         assert_eq!(
             "lq1qqwygr58ye8fs69lrweqpj20lal8nyqxpygpqw5er4p6gsazdcqpzd0yf4xcrlme85chya4tsmrwdrgrgt92gchw9fvzy5r5m3",
             &addr.to_string()
         );
 
-        let desc = format!("{}({}/*)","elwpkh", &chain.to_string());
+        let desc = format!("{}({}/*)", "elwpkh", &chain.to_string());
         let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&desc).unwrap();
         assert_eq!(
             "elwpkh(xpub6F33eZ1QWddkNKw27gdgACBGorYVU4iqJQwMDL85jVeiZKSjFbnKhJr15DtzBuiDLHAEr2aXk2aXahLq8Jpt9KZh1ubHuCc9Nbf65d65kPH/*)#yvsg4jzf",
