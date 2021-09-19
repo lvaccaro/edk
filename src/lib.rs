@@ -21,7 +21,7 @@ use miniscript::elements::{Address, AddressParams};
 use miniscript::{Descriptor, DescriptorPublicKey, DescriptorTrait, TranslatePk2};
 
 use bdk::database::memory::MemoryDatabase;
-use bdk::database::Database;
+use bdk::database::{BatchDatabase, BatchOperations, Database};
 use bdk::electrum_client::{
     Client, ConfigBuilder, ElectrumApi, GetHistoryRes, ListUnspentRes, Socks5Config,
 };
@@ -39,19 +39,22 @@ struct DownloadTxResult {
     unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets)>,
 }
 
-pub struct Wallet {
+pub struct Wallet<DB> {
     descriptor: Descriptor<DescriptorPublicKey>,
     master_blinding_key: MasterBlindingKey,
     secp: Secp256k1<All>,
-    database: MemoryDatabase,
+    database: DB,
     client: Client,
 }
 
-impl Wallet {
+impl<DB> Wallet<DB>
+where
+    DB: BatchDatabase,
+{
     pub fn new(
         descriptor: Descriptor<DescriptorPublicKey>,
         master_blinding_key: MasterBlindingKey,
-        database: MemoryDatabase,
+        database: DB,
         client: Client,
     ) -> Result<Self, bdk::Error> {
         Ok(Wallet {
