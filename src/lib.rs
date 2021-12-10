@@ -9,6 +9,7 @@ pub extern crate elements_miniscript as miniscript;
 pub extern crate serde;
 
 use miniscript::bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
+use miniscript::bitcoin::network::constants::Network;
 use miniscript::elements::confidential::{
     self, Asset, AssetBlindingFactor, Nonce, Value, ValueBlindingFactor,
 };
@@ -45,6 +46,7 @@ pub struct Wallet<DB> {
     secp: Secp256k1<All>,
     database: DB,
     client: Client,
+    network: &'static AddressParams
 }
 
 impl<DB> Wallet<DB>
@@ -56,6 +58,7 @@ where
         master_blinding_key: MasterBlindingKey,
         database: DB,
         client: Client,
+        network: &'static AddressParams,
     ) -> Result<Self, bdk::Error> {
         Ok(Wallet {
             descriptor,
@@ -63,6 +66,7 @@ where
             secp: Secp256k1::new(),
             database,
             client,
+            network
         })
     }
 
@@ -72,7 +76,7 @@ where
             .derive(index)
             .translate_pk2(|xpk| xpk.derive_public_key(&self.secp))
             .unwrap();
-        let unconfidential_address = xpk.address(&AddressParams::LIQUID).unwrap();
+        let unconfidential_address = xpk.address(&self.network).unwrap();
         let script_pubkey = xpk.script_pubkey();
         let blinding_sk = self.master_blinding_key.derive_blinding_key(&script_pubkey);
         let blinding_pk = PublicKey::from_secret_key(&self.secp, &blinding_sk);
@@ -363,7 +367,7 @@ pub mod test {
 
         let database = MemoryDatabase::new();
         let client = Client::new("ssl://blockstream.info:995").unwrap();
-        let mut wallet = Wallet::new(descriptor, master_blinding_key, database, client).unwrap();
+        let mut wallet = Wallet::new(descriptor, master_blinding_key, database, client, &AddressParams::LIQUID).unwrap();
         let addr = wallet.get_new_address().unwrap();
         let addr = wallet.get_new_address().unwrap();
         //let addr2 = wallet.get_new_address().unwrap();
