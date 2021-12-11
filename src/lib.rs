@@ -27,6 +27,7 @@ use bdk::database::{BatchDatabase, BatchOperations, Database};
 use bdk::electrum_client::{
     Client, ConfigBuilder, ElectrumApi, GetHistoryRes, ListUnspentRes, Socks5Config,
 };
+use bdk::blockchain::{Blockchain};
 use serde::{Deserialize, Serialize};
 
 pub enum ScriptType {
@@ -36,9 +37,9 @@ pub enum ScriptType {
 }
 
 #[derive(Default)]
-struct DownloadTxResult {
-    txs: Vec<(elements::Txid, elements::Transaction)>,
-    unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets)>,
+pub struct DownloadTxResult {
+    pub txs: Vec<(elements::Txid, elements::Transaction)>,
+    pub unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets)>,
 }
 
 pub struct Wallet<D> {
@@ -96,21 +97,23 @@ where
     }
 
     // Return a newly derived address using the external descriptor
-    fn get_new_address(&mut self) -> Result<Address, bdk::Error> {
+    pub fn get_new_address(&self) -> Result<Address, bdk::Error> {
         let index = match self.descriptor.is_deriveable() {
             false => 0,
             true => self
                 .database
+                .borrow_mut()
                 .increment_last_index(bdk::KeychainKind::External)?,
         };
         let addr = self.get_address(index)?;
         Ok(addr)
     }
 
-    fn get_previous_addresses(&mut self) -> Result<Vec<Address>, bdk::Error> {
+    fn get_previous_addresses(&self) -> Result<Vec<Address>, bdk::Error> {
         let mut addresses = vec![];
         for i in 0..self
             .database
+            .borrow()
             .get_last_index(bdk::KeychainKind::External)?
             .unwrap_or(0)
             + 1
@@ -121,11 +124,11 @@ where
         Ok(addresses)
     }
 
-    fn is_mine_address(&mut self, addr: &Address) -> Result<bool, bdk::Error> {
+    pub fn is_mine_address(&self, addr: &Address) -> Result<bool, bdk::Error> {
         Ok(self.get_previous_addresses()?.contains(addr))
     }
 
-    fn balance(&mut self) -> Result<HashMap<String, u64>, bdk::Error> {
+    pub fn balance(&self) -> Result<HashMap<String, u64>, bdk::Error> {
         let addrs: Vec<Address> = self.get_previous_addresses()?;
         let mut balances = HashMap::new();
 
@@ -136,7 +139,7 @@ where
         Ok(balances)
     }
 
-    fn balance_addresses(&mut self, addrs: Vec<Address>) -> Result<DownloadTxResult, bdk::Error> {
+    pub fn balance_addresses(&self, addrs: Vec<Address>) -> Result<DownloadTxResult, bdk::Error> {
         //let client = Client::new("ssl://blockstream.info:995").unwrap();
 
         let mut history_txs_id = HashSet::<elements::Txid>::new();
@@ -176,7 +179,7 @@ where
     }
 
     fn download_txs(
-        &mut self,
+        &self,
         history_txs_id: &HashSet<elements::Txid>,
         scripts: &Vec<elements::Script>,
     ) -> Result<DownloadTxResult, bdk::Error> {
