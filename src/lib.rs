@@ -71,6 +71,16 @@ where
         })
     }
 
+    /// Get the Liquid network the wallet is using.
+    pub fn network(&self) -> &'static AddressParams {
+        self.network
+    }
+
+    /// Return a reference to the internal blockchain client
+    pub fn client(&self) -> &Client {
+        &self.client
+    }
+
     fn get_address(&self, index: u32) -> Result<Address, bdk::Error> {
         let xpk = self
             .descriptor
