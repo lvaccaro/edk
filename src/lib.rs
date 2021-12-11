@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::error;
 use std::fmt;
 use std::str::FromStr;
+use std::cell::RefCell;
 
 pub extern crate bdk;
 pub extern crate bip39;
@@ -40,23 +41,23 @@ struct DownloadTxResult {
     unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets)>,
 }
 
-pub struct Wallet<DB> {
+pub struct Wallet<D> {
     descriptor: Descriptor<DescriptorPublicKey>,
     master_blinding_key: MasterBlindingKey,
     secp: Secp256k1<All>,
-    database: DB,
     client: Client,
+    database: RefCell<D>,
     network: &'static AddressParams
 }
 
-impl<DB> Wallet<DB>
+impl<D> Wallet<D>
 where
-    DB: BatchDatabase,
+    D: BatchDatabase,
 {
     pub fn new(
         descriptor: Descriptor<DescriptorPublicKey>,
         master_blinding_key: MasterBlindingKey,
-        database: DB,
+        database: D,
         client: Client,
         network: &'static AddressParams,
     ) -> Result<Self, bdk::Error> {
@@ -64,8 +65,8 @@ where
             descriptor,
             master_blinding_key,
             secp: Secp256k1::new(),
-            database,
             client,
+            database: RefCell::new(database),
             network
         })
     }
@@ -366,8 +367,12 @@ pub mod test {
         );
 
         let database = MemoryDatabase::new();
+
         let client = Client::new("ssl://blockstream.info:995").unwrap();
-        let mut wallet = Wallet::new(descriptor, master_blinding_key, database, client, &AddressParams::LIQUID).unwrap();
+        let mut wallet = Wallet::new(descriptor, master_blinding_key,
+            MemoryDatabase::new(),
+            client,
+            &AddressParams::LIQUID).unwrap();
         let addr = wallet.get_new_address().unwrap();
         let addr = wallet.get_new_address().unwrap();
         //let addr2 = wallet.get_new_address().unwrap();
