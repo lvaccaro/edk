@@ -342,11 +342,16 @@ pub mod test {
 
     #[test]
     fn test_aqua_derivation() {
-        let mnemonic = "all all all all all all all all all all all all";
+        let mnemonic = "fashion twist awful letter neck creek giggle april head once taxi arena";
         let seed = bip39::Mnemonic::from_str(mnemonic)
             .unwrap()
             .to_seed_normalized("");
+
         let master_blinding_key = MasterBlindingKey::new(&seed);
+        assert_eq!(
+            "8303cf4dc264b1c8ba08114c9b0441f5b50f147f2c09499c4cb4a346b5301d55",
+            master_blinding_key.0.to_string()
+        );
 
         // 0="p2sh-p2wpkh" 1="p2wpkh" 2="p2pkh" , 49="p2sh-p2wpkh" 84="p2wpkh" 44="p2pkh"
         // let (bip32_account_num, script_type, purpose) = (0, ScriptType::P2shP2wpkh, 49);let chain = aqua_subaccount_derivation(&seed, bip32_account_num, &script_type, purpose).unwrap();
@@ -355,20 +360,20 @@ pub mod test {
         let chain =
             aqua_subaccount_derivation(&seed, bip32_account, &script_type, purpose).unwrap();
         assert_eq!(
-            "xpub6F33eZ1QWddkNKw27gdgACBGorYVU4iqJQwMDL85jVeiZKSjFbnKhJr15DtzBuiDLHAEr2aXk2aXahLq8Jpt9KZh1ubHuCc9Nbf65d65kPH",
+            "xpub6EbiTuUXu4RbdT3gS2CXEofcLwoN5gJmmZeL5cDPUcTvtTF1Zezj2H3zqazqAxsJACJpvWE4JeAS8aN6fcdZVsLBSCDAxPcid4azopa8Aq8",
             &chain.to_string()
         );
 
         let addr = aqua_address_derivation(chain, 1, &script_type, &master_blinding_key).unwrap();
         assert_eq!(
-            "lq1qqwygr58ye8fs69lrweqpj20lal8nyqxpygpqw5er4p6gsazdcqpzd0yf4xcrlme85chya4tsmrwdrgrgt92gchw9fvzy5r5m3",
+            "lq1qq2s7q8hc389g09sgy85gvs6d68u778fwh574tuhu87jszza07ekt2v4kzh4kch42jh06v56yux4mzhvtulwvurgd0f8xh9mzn",
             &addr.to_string()
         );
 
         let addr = aqua_address_derivation_descriptor(chain, 1, &script_type, &master_blinding_key)
             .unwrap();
         assert_eq!(
-            "lq1qqwygr58ye8fs69lrweqpj20lal8nyqxpygpqw5er4p6gsazdcqpzd0yf4xcrlme85chya4tsmrwdrgrgt92gchw9fvzy5r5m3",
+            "lq1qq2s7q8hc389g09sgy85gvs6d68u778fwh574tuhu87jszza07ekt2v4kzh4kch42jh06v56yux4mzhvtulwvurgd0f8xh9mzn",
             &addr.to_string()
         );
 
@@ -382,10 +387,14 @@ pub mod test {
         let database = MemoryDatabase::new();
 
         let client = Client::new("ssl://blockstream.info:995").unwrap();
-        let mut wallet = Wallet::new(descriptor, master_blinding_key,
+        let mut wallet = Wallet::new(
+            descriptor,
+            master_blinding_key,
             MemoryDatabase::new(),
             client,
-            &AddressParams::LIQUID).unwrap();
+            &AddressParams::LIQUID,
+        )
+        .unwrap();
         let addr = wallet.get_new_address().unwrap();
         let addr = wallet.get_new_address().unwrap();
         //let addr2 = wallet.get_new_address().unwrap();
