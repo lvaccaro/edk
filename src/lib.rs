@@ -1,16 +1,16 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::error;
 use std::fmt;
 use std::str::FromStr;
-use std::cell::RefCell;
 
 pub extern crate bdk;
 pub extern crate bip39;
 pub extern crate elements_miniscript as miniscript;
 pub extern crate serde;
 
-use miniscript::bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
 use miniscript::bitcoin::network::constants::Network;
+use miniscript::bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
 use miniscript::elements::confidential::{
     self, Asset, AssetBlindingFactor, Nonce, Value, ValueBlindingFactor,
 };
@@ -22,12 +22,12 @@ use miniscript::elements::TxOutSecrets;
 use miniscript::elements::{Address, AddressParams};
 use miniscript::{Descriptor, DescriptorPublicKey, DescriptorTrait, TranslatePk2};
 
+use bdk::blockchain::Blockchain;
 use bdk::database::memory::MemoryDatabase;
 use bdk::database::{BatchDatabase, BatchOperations, Database};
 use bdk::electrum_client::{
     Client, ConfigBuilder, ElectrumApi, GetHistoryRes, ListUnspentRes, Socks5Config,
 };
-use bdk::blockchain::{Blockchain};
 use serde::{Deserialize, Serialize};
 
 pub enum ScriptType {
@@ -48,7 +48,7 @@ pub struct Wallet<D> {
     secp: Secp256k1<All>,
     client: Client,
     database: RefCell<D>,
-    network: &'static AddressParams
+    network: &'static AddressParams,
 }
 
 impl<D> Wallet<D>
@@ -68,7 +68,7 @@ where
             secp: Secp256k1::new(),
             client,
             database: RefCell::new(database),
-            network
+            network,
         })
     }
 
