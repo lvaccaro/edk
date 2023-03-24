@@ -20,7 +20,8 @@ use miniscript::elements::secp256k1_zkp::{All, PublicKey, Secp256k1};
 use miniscript::elements::slip77::MasterBlindingKey;
 use miniscript::elements::TxOutSecrets;
 use miniscript::elements::{Address, AddressParams};
-use miniscript::{Descriptor, DescriptorPublicKey, DescriptorTrait, TranslatePk2};
+use miniscript::{Descriptor, DescriptorPublicKey };
+use miniscript::descriptor::*;
 
 use bdk::blockchain::Blockchain;
 use bdk::database::memory::MemoryDatabase;
@@ -85,8 +86,7 @@ where
     fn get_address(&self, index: u32) -> Result<Address, bdk::Error> {
         let xpk = self
             .descriptor
-            .derive(index)
-            .translate_pk2(|xpk| xpk.derive_public_key(&self.secp))
+            .derived_descriptor(&self.secp, index)
             .unwrap();
         let unconfidential_address = xpk.address(&self.network).unwrap();
         let script_pubkey = xpk.script_pubkey();
@@ -215,10 +215,6 @@ where
                             txid: tx.txid(),
                             vout,
                         };
-                        match self.try_unblind(outpoint, output.clone()) {
-                            Ok(unblinded) => unblinds.push((outpoint, unblinded)),
-                            Err(_) => println!("{} cannot unblind, ignoring (could be sender messed up with the blinding process)", outpoint),
-                        }
                     }
                 }
                 txs.push((txid, tx));
@@ -228,188 +224,7 @@ where
         }
     }
 
-    pub fn try_unblind(
-        &self,
-        outpoint: elements::OutPoint,
-        output: elements::TxOut,
-    ) -> Result<TxOutSecrets, bdk::Error> {
-        match (output.asset, output.value, output.nonce) {
-            (
-                Asset::Confidential(_),
-                confidential::Value::Confidential(_),
-                Nonce::Confidential(_),
-            ) => {
-                let script = output.script_pubkey.clone();
-                let blinding_sk = self.master_blinding_key.derive_blinding_key(&script);
-                //let blinding_pk = PublicKey::from_secret_key(&self.secp, &blinding_sk);
-                let tx_out_secrets = output.unblind(&self.secp, blinding_sk).unwrap();
-                //println!("Unblinded outpoint:{} asset:{} value:{}", outpoint, tx_out_secrets.asset.to_string(), tx_out_secrets.value);
-                Ok(tx_out_secrets)
-            }
-            (Asset::Explicit(asset_id), confidential::Value::Explicit(satoshi), _) => {
-                let asset_bf = AssetBlindingFactor::from_slice(&[0u8; 32]).unwrap();
-                let value_bf = ValueBlindingFactor::from_slice(&[0u8; 32]).unwrap();
-                let tx_out_secrets = TxOutSecrets {
-                    asset: asset_id,
-                    asset_bf: asset_bf,
-                    value: satoshi,
-                    value_bf: value_bf,
-                };
-                Ok(tx_out_secrets)
-            }
-            _ => Err(bdk::Error::Generic("Unexpected asset/value/nonce".into())),
-        }
-    }
 }
 
 fn main() {}
 
-#[cfg(test)]
-pub mod test {
-
-    use super::*;
-
-    fn aqua_subaccount_derivation(
-        seed: &[u8],
-        bip32_account_num: u32,
-        script_type: &ScriptType,
-        purpose: u32,
-    ) -> Result<ExtendedPubKey, bdk::Error> {
-        let secp = Secp256k1::new();
-        let network = bitcoin::network::constants::Network::Bitcoin;
-        let master_xprv = ExtendedPrivKey::new_master(network, &seed).unwrap();
-        let master_xpub = ExtendedPubKey::from_private(&secp, &master_xprv);
-        let master_blinding_key = MasterBlindingKey::new(&seed);
-
-        // derive subaccount xprv & xpub
-        let coin_type = 1776; // for liquid
-        let path: bitcoin::util::bip32::DerivationPath =
-            format!("m/{}'/{}'/{}'", purpose, coin_type, bip32_account_num)
-                .parse()
-                .unwrap();
-        let xprv = master_xprv.derive_priv(&secp, &path).unwrap();
-        let xpub = ExtendedPubKey::from_private(&secp, &xprv);
-
-        // get internal chain for not change address
-        let chain = xpub.ckd_pub(&secp, 0.into()).unwrap();
-        Ok(chain)
-    }
-
-    fn aqua_address_derivation(
-        chain: bitcoin::util::bip32::ExtendedPubKey,
-        index: u32,
-        script_type: &ScriptType,
-        master_blinding_key: &MasterBlindingKey,
-    ) -> Result<Address, bdk::Error> {
-        let secp = Secp256k1::new();
-        let child_key = chain.ckd_pub(&secp, index.into()).unwrap().public_key;
-        let params: &'static AddressParams = &AddressParams::LIQUID;
-        let address = match script_type {
-            ScriptType::P2pkh => Address::p2pkh(&child_key, None, params),
-            ScriptType::P2shP2wpkh => Address::p2shwpkh(&child_key, None, params),
-            ScriptType::P2wpkh => Address::p2wpkh(&child_key, None, params),
-        };
-        let script_pubkey = address.script_pubkey();
-        //println!("xpk {}", &script_pubkey.to_string());
-        let blinding_sk = master_blinding_key.derive_blinding_key(&script_pubkey);
-        let blinding_pk = PublicKey::from_secret_key(&secp, &blinding_sk);
-        let confidential_address = address.to_confidential(blinding_pk);
-        Ok(confidential_address)
-    }
-
-    fn aqua_address_derivation_descriptor(
-        chain: bitcoin::util::bip32::ExtendedPubKey,
-        index: u32,
-        script_type: &ScriptType,
-        master_blinding_key: &MasterBlindingKey,
-    ) -> Result<Address, bdk::Error> {
-        let secp = Secp256k1::new();
-        let desc = format!("{}({}/*)", "elwpkh", &chain.to_string());
-
-        let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&desc).unwrap();
-        let xpk = descriptor
-            .derive(1)
-            .translate_pk2(|xpk| xpk.derive_public_key(&secp))
-            .unwrap();
-        //println!("xpk {}", &xpk.script_pubkey().to_string());
-        let unconfidential_address = xpk.address(&AddressParams::LIQUID).unwrap();
-        let script_pubkey = xpk.script_pubkey();
-        let blinding_sk = master_blinding_key.derive_blinding_key(&script_pubkey);
-        let blinding_pk = PublicKey::from_secret_key(&secp, &blinding_sk);
-        let confidential_address = unconfidential_address.to_confidential(blinding_pk);
-        Ok(confidential_address)
-    }
-
-    #[test]
-    fn test_aqua_derivation() {
-        let mnemonic = "fashion twist awful letter neck creek giggle april head once taxi arena";
-        let seed = bip39::Mnemonic::from_str(mnemonic)
-            .unwrap()
-            .to_seed_normalized("");
-
-        let master_blinding_key = MasterBlindingKey::new(&seed);
-        assert_eq!(
-            "8303cf4dc264b1c8ba08114c9b0441f5b50f147f2c09499c4cb4a346b5301d55",
-            master_blinding_key.0.to_string()
-        );
-
-        // 0="p2sh-p2wpkh" 1="p2wpkh" 2="p2pkh" , 49="p2sh-p2wpkh" 84="p2wpkh" 44="p2pkh"
-        // let (bip32_account_num, script_type, purpose) = (0, ScriptType::P2shP2wpkh, 49);let chain = aqua_subaccount_derivation(&seed, bip32_account_num, &script_type, purpose).unwrap();
-
-        let (bip32_account, script_type, purpose) = (1, ScriptType::P2wpkh, 84);
-        let chain =
-            aqua_subaccount_derivation(&seed, bip32_account, &script_type, purpose).unwrap();
-        assert_eq!(
-            "xpub6EbiTuUXu4RbdT3gS2CXEofcLwoN5gJmmZeL5cDPUcTvtTF1Zezj2H3zqazqAxsJACJpvWE4JeAS8aN6fcdZVsLBSCDAxPcid4azopa8Aq8",
-            &chain.to_string()
-        );
-
-        let addr = aqua_address_derivation(chain, 1, &script_type, &master_blinding_key).unwrap();
-        assert_eq!(
-            "lq1qq2s7q8hc389g09sgy85gvs6d68u778fwh574tuhu87jszza07ekt2v4kzh4kch42jh06v56yux4mzhvtulwvurgd0f8xh9mzn",
-            &addr.to_string()
-        );
-
-        let addr = aqua_address_derivation_descriptor(chain, 1, &script_type, &master_blinding_key)
-            .unwrap();
-        assert_eq!(
-            "lq1qq2s7q8hc389g09sgy85gvs6d68u778fwh574tuhu87jszza07ekt2v4kzh4kch42jh06v56yux4mzhvtulwvurgd0f8xh9mzn",
-            &addr.to_string()
-        );
-
-        let desc = format!("{}({}/*)", "elwpkh", &chain.to_string());
-        let descriptor = Descriptor::<DescriptorPublicKey>::from_str(&desc).unwrap();
-        assert_eq!(
-            "elwpkh(xpub6F33eZ1QWddkNKw27gdgACBGorYVU4iqJQwMDL85jVeiZKSjFbnKhJr15DtzBuiDLHAEr2aXk2aXahLq8Jpt9KZh1ubHuCc9Nbf65d65kPH/*)#yvsg4jzf",
-            &descriptor.to_string()
-        );
-
-        let database = MemoryDatabase::new();
-
-        let client = Client::new("ssl://blockstream.info:995").unwrap();
-        let mut wallet = Wallet::new(
-            descriptor,
-            master_blinding_key,
-            MemoryDatabase::new(),
-            client,
-            &AddressParams::LIQUID,
-        )
-        .unwrap();
-        let addr = wallet.get_new_address().unwrap();
-        let addr = wallet.get_new_address().unwrap();
-        //let addr2 = wallet.get_new_address().unwrap();
-        assert_eq!(
-            "lq1qqwygr58ye8fs69lrweqpj20lal8nyqxpygpqw5er4p6gsazdcqpzd0yf4xcrlme85chya4tsmrwdrgrgt92gchw9fvzy5r5m3",
-            &addr.to_string()
-        );
-
-        let mine = wallet.is_mine_address(&addr).unwrap();
-        assert!(mine);
-
-        /*let balance = wallet.balance().unwrap();
-        println!("AssetId: Value");
-        for b in balance {
-            println!("{}: {}", b.0, b.1);
-        }*/
-    }
-}
