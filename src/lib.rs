@@ -31,13 +31,15 @@ use bdk::electrum_client::{
 };
 use serde::{Deserialize, Serialize};
 
+use log::*;
+
 pub enum ScriptType {
     P2shP2wpkh = 0,
     P2wpkh = 1,
     P2pkh = 2,
 }
 
-#[derive(Default)]
+#[derive(Default,Debug)]
 pub struct DownloadTxResult {
     pub txs: Vec<(elements::Txid, elements::Transaction)>,
     pub unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets)>,
@@ -131,10 +133,13 @@ where
         let addrs: Vec<Address> = self.get_previous_addresses()?;
         let mut balances = HashMap::new();
 
+        info!("======Checking for ========");
+        info!("addrs: {:?}",addrs.clone());
         for unblind in self.balance_addresses(addrs)?.unblinds {
             let tx_out = unblind.1;
             *balances.entry(tx_out.asset.to_string()).or_insert(0) += tx_out.value;
         }
+        info!("======Checking for ========");
         Ok(balances)
     }
 

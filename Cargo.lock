@@ -210,6 +210,7 @@ dependencies = [
  "electrum-client 0.7.0",
  "elements",
  "elements-miniscript",
+ "log",
  "miniscript 5.1.0",
  "serde",
  "serde_json",
