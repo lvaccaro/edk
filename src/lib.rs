@@ -8,6 +8,7 @@ pub extern crate bdk;
 pub extern crate bip39;
 pub extern crate elements_miniscript as miniscript;
 pub extern crate serde;
+pub extern crate log;
 
 use miniscript::bitcoin::network::constants::Network;
 use miniscript::bitcoin::util::bip32::{ExtendedPrivKey, ExtendedPubKey};
