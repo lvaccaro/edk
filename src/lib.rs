@@ -137,6 +137,7 @@ where
         info!("======Checking for ========");
         info!("addrs: {:?}",addrs.clone());
         for unblind in self.balance_addresses(addrs)?.unblinds {
+            info!("unblinded tx: {:?}",unblind.clone()); 
             let tx_out = unblind.1;
             *balances.entry(tx_out.asset.to_string()).or_insert(0) += tx_out.value;
         }
