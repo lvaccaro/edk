@@ -247,9 +247,13 @@ where
                 let script = output.script_pubkey.clone();
                 let blinding_sk = self.master_blinding_key.derive_blinding_key(&script);
                 //let blinding_pk = PublicKey::from_secret_key(&self.secp, &blinding_sk);
-                let tx_out_secrets = output.unblind(&self.secp, blinding_sk).unwrap();
+                let r_tx_out_secrets = output.unblind(&self.secp, blinding_sk);
                 //println!("Unblinded outpoint:{} asset:{} value:{}", outpoint, tx_out_secrets.asset.to_string(), tx_out_secrets.value);
-                Ok(tx_out_secrets)
+                //TODO add cutom Error enum and mapping between bdk and edk errors
+                match r_tx_out_secrets {
+                    Ok(tx_o_s) => {Ok(tx_o_s)}
+                    Err(_) => {Err(bdk::Error::Generic("unbinging error".into()))}
+                }
             }
             (Asset::Explicit(asset_id), confidential::Value::Explicit(satoshi), _) => {
                 let asset_bf = AssetBlindingFactor::from_slice(&[0u8; 32]).unwrap();
