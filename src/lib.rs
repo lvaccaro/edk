@@ -119,7 +119,6 @@ where
             + 1
         {
             addresses.push(self.get_address(i)?);
-            //println!("{} {} {}",i, self.get_address(i)?, self.database.get_last_index(bdk::KeychainKind::External)?.unwrap_or(0));
         }
         Ok(addresses)
     }
@@ -215,12 +214,49 @@ where
                             txid: tx.txid(),
                             vout,
                         };
+                        match self.try_unblind(outpoint, output.clone()) {
+                            Ok(unblinded) => unblinds.push((outpoint, unblinded)),
+                            Err(_) => println!("{} cannot unblind, ignoring (could be sender messed up with the blinding process)", outpoint),
+                        }
                     }
                 }
                 txs.push((txid, tx));
             }
 
             Ok(DownloadTxResult { txs, unblinds })
+        }
+    }
+
+    pub fn try_unblind(
+        &self,
+        outpoint: elements::OutPoint,
+        output: elements::TxOut,
+    ) -> Result<TxOutSecrets, bdk::Error> {
+        match (output.asset, output.value, output.nonce) {
+            (
+                Asset::Confidential(_),
+                confidential::Value::Confidential(_),
+                Nonce::Confidential(_),
+            ) => {
+                let script = output.script_pubkey.clone();
+                let blinding_sk = self.master_blinding_key.derive_blinding_key(&script);
+                //let blinding_pk = PublicKey::from_secret_key(&self.secp, &blinding_sk);
+                let tx_out_secrets = output.unblind(&self.secp, blinding_sk).unwrap();
+                //println!("Unblinded outpoint:{} asset:{} value:{}", outpoint, tx_out_secrets.asset.to_string(), tx_out_secrets.value);
+                Ok(tx_out_secrets)
+            }
+            (Asset::Explicit(asset_id), confidential::Value::Explicit(satoshi), _) => {
+                let asset_bf = AssetBlindingFactor::from_slice(&[0u8; 32]).unwrap();
+                let value_bf = ValueBlindingFactor::from_slice(&[0u8; 32]).unwrap();
+                let tx_out_secrets = TxOutSecrets {
+                    asset: asset_id,
+                    asset_bf: asset_bf,
+                    value: satoshi,
+                    value_bf: value_bf,
+                };
+                Ok(tx_out_secrets)
+            }
+            _ => Err(bdk::Error::Generic("Unexpected asset/value/nonce".into())),
         }
     }
 
