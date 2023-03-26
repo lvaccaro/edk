@@ -50,7 +50,15 @@ pub struct DownloadTxResult {
 #[derive(Default,Debug,Clone)]
 pub struct EDKTransactionDetails {
     pub txs: Vec<(elements::Txid, elements::Transaction, i32)>,
-    pub unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets)>,
+    pub unblinds: Vec<(elements::OutPoint, elements::TxOutSecrets, i32)>,
+}
+
+#[derive(Debug,Clone)]
+pub struct EDKBalanceOutput {
+    pub asset : String,
+    pub txid : elements::Txid,
+    pub value : u64,
+    pub height : i32
 }
 
 #[derive(Debug,Clone)]
@@ -153,14 +161,44 @@ where
         let addrs: Vec<Address> = self.get_previous_addresses()?;
         let mut balances = HashMap::new();
 
-        info!("======Checking for ========");
-        info!("addrs: {:?}",addrs.clone());
         for unblind in self.balance_addresses(addrs)?.unblinds {
             info!("unblinded tx: {:?}",unblind.clone()); 
             let tx_out = unblind.1;
             *balances.entry(tx_out.asset.to_string()).or_insert(0) += tx_out.value;
         }
-        info!("======Checking for ========");
+        Ok(balances)
+    }
+
+    pub fn balance_with_height(&self) -> Result<Vec<(String, u64,i32)>, bdk::Error> {
+        let addrs: Vec<Address> = self.get_previous_addresses()?;
+        let mut balances = vec![]; 
+        let bawh = self.balance_addresses_with_height(addrs)?;
+
+        for unblind in bawh.unblinds {
+            let tx_out = unblind.1;
+            let tx_height = unblind.2;
+            balances.push((tx_out.asset.to_string(),tx_out.value,tx_height));
+        }
+        Ok(balances)
+    }
+
+    pub fn balance_with_txid_and_height(&self) -> Result<Vec<EDKBalanceOutput>, bdk::Error> {
+        let addrs: Vec<Address> = self.get_previous_addresses()?;
+        let mut balances = vec![]; 
+        let bawh = self.balance_addresses_with_height(addrs)?;
+
+        for unblind in bawh.unblinds {
+            let tx_out = unblind.1;
+            let tx_height = unblind.2;
+            let tx_id = unblind.0.txid;
+            let bal_output = EDKBalanceOutput {
+                asset : tx_out.asset.to_string(),
+                txid : tx_id,
+                value : tx_out.value,
+                height : tx_height
+            };
+            balances.push(bal_output);
+        }
         Ok(balances)
     }
 
@@ -218,7 +256,6 @@ where
                 let tx: elements::Transaction = elm_des(&vec).unwrap();
                 txs_downloaded.push(tx);
             }
-            println!("txs_downloaded {}", txs_downloaded.len());
             let txs_downloaded_with_height:Vec<TxWithHeight> = txs_downloaded.iter()
                                                             .zip(txs_height.iter())
                                                             .map(|(t,h)| TxWithHeight{tx: t.to_owned(), tx_height:h.to_owned()})
@@ -226,7 +263,6 @@ where
             //let mut previous_txs_to_download = HashSet::new();
             for tx in txs_downloaded_with_height.into_iter() {
                 let txid = tx.tx.txid();
-                println!("compute OutPoint Unblinded");
                 for (i, output) in tx.tx.output.iter().enumerate() {
                     let script = output.script_pubkey.clone();
                     if scripts.contains(&script) {
@@ -236,7 +272,7 @@ where
                             vout,
                         };
                         match self.try_unblind(outpoint, output.clone()) {
-                            Ok(unblinded) => unblinds.push((outpoint, unblinded)),
+                            Ok(unblinded) => unblinds.push((outpoint, unblinded,tx.tx_height)),
                             Err(_) => println!("{} cannot unblind, ignoring (could be sender messed up with the blinding process)", outpoint),
                         }
                     }
@@ -311,11 +347,9 @@ where
                 let tx: elements::Transaction = elm_des(&vec).unwrap();
                 txs_downloaded.push(tx);
             }
-            println!("txs_downloaded {}", txs_downloaded.len());
             //let mut previous_txs_to_download = HashSet::new();
             for tx in txs_downloaded.into_iter() {
                 let txid = tx.txid();
-                println!("compute OutPoint Unblinded");
                 for (i, output) in tx.output.iter().enumerate() {
                     let script = output.script_pubkey.clone();
                     if scripts.contains(&script) {
